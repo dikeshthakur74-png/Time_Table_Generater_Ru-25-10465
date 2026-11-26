@@ -1,0 +1,209 @@
+import java.util.*;
+
+public class TimetableGenerator {
+
+    private static final Map<String, ArrayList<String>> graph = new HashMap<>();
+    private static final ArrayList<String> subjects = new ArrayList<>();
+
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+
+        System.out.println("===== TIMETABLE GENERATOR =====");
+        System.out.print("Enter subjects (comma-separated): ");
+        String subjectLine = sc.nextLine();
+
+        for (String subject : subjectLine.split(",")) {
+            String name = subject.trim();
+            if (!name.isEmpty() && !graph.containsKey(name)) {
+                subjects.add(name);
+                graph.put(name, new ArrayList<>());
+            }
+        }
+
+        if (subjects.isEmpty()) {
+            System.out.println("No valid subjects entered.");
+            sc.close();
+            return;
+        }
+
+        System.out.print("Enter number of clashes: ");
+        int clashCount = readNonNegativeInt(sc);
+
+        for (int i = 1; i <= clashCount; i++) {
+            System.out.print("Enter clash " + i + " (Subject1-Subject2): ");
+            String clash = sc.nextLine().trim();
+            addClash(clash);
+        }
+
+        System.out.print("Enter available slots: ");
+        int availableSlots = readNonNegativeInt(sc);
+
+        if (availableSlots == 0) {
+            System.out.println("No valid timetable with 0 slots.");
+            sc.close();
+            return;
+        }
+
+        Map<String, Integer> greedyResult = greedyColor(availableSlots);
+
+        if (greedyResult != null) {
+            System.out.println("\\nGreedy colouring used.");
+            printTimetable(greedyResult);
+        } else {
+            Map<String, Integer> unrestrictedGreedy = greedyColor(subjects.size());
+            int requiredSlots = countSlots(unrestrictedGreedy);
+
+            System.out.println("\\nGreedy needs " + requiredSlots
+                    + " slots. Trying backtracking...");
+
+            Map<String, Integer> backtrackingResult = new LinkedHashMap<>();
+            if (backtrack(0, availableSlots, backtrackingResult)) {
+                System.out.println("Backtracking solution found.");
+                printTimetable(backtrackingResult);
+            } else {
+                System.out.println("No valid timetable with " + availableSlots + " slot"
+                        + (availableSlots == 1 ? "" : "s") + ".");
+            }
+        }
+
+        sc.close();
+    }
+
+    private static int readNonNegativeInt(Scanner sc) {
+        while (true) {
+            String line = sc.nextLine().trim();
+            try {
+                int value = Integer.parseInt(line);
+                if (value >= 0) {
+                    return value;
+                }
+            } catch (NumberFormatException ignored) {
+                // Ask again when the input is not a valid integer.
+            }
+            System.out.print("Please enter a non-negative whole number: ");
+        }
+    }
+
+    private static void addClash(String clash) {
+        String[] parts = clash.split("-", 2);
+
+        if (parts.length != 2) {
+            System.out.println("Invalid clash format. Clash not added.");
+            return;
+        }
+
+        String first = parts[0].trim();
+        String second = parts[1].trim();
+
+        if (!graph.containsKey(first) || !graph.containsKey(second)) {
+            String missing = !graph.containsKey(first) ? first : second;
+            System.out.println("Subject " + missing + " not found. Clash not added.");
+            return;
+        }
+
+        if (first.equals(second)) {
+            System.out.println("A subject cannot clash with itself. Clash not added.");
+            return;
+        }
+
+        if (!graph.get(first).contains(second)) {
+            graph.get(first).add(second);
+            graph.get(second).add(first);
+        }
+    }
+
+    // Greedy graph colouring: assign the lowest available slot in input order.
+    private static Map<String, Integer> greedyColor(int maxSlots) {
+        Map<String, Integer> colors = new LinkedHashMap<>();
+
+        for (String subject : subjects) {
+            boolean[] used = new boolean[maxSlots + 1];
+
+            for (String neighbor : graph.get(subject)) {
+                Integer neighborSlot = colors.get(neighbor);
+                if (neighborSlot != null && neighborSlot <= maxSlots) {
+                    used[neighborSlot] = true;
+                }
+            }
+
+            int slot;
+            for (slot = 1; slot <= maxSlots; slot++) {
+                if (!used[slot]) {
+                    break;
+                }
+            }
+
+            if (slot > maxSlots) {
+                return null;
+            }
+
+            colors.put(subject, slot);
+        }
+
+        return colors;
+    }
+
+    // Backtracking tries slots 1, 2, ... in the original subject order.
+    private static boolean backtrack(int index, int maxSlots,
+                                     Map<String, Integer> colors) {
+        if (index == subjects.size()) {
+            return true;
+        }
+
+        String subject = subjects.get(index);
+
+        for (int slot = 1; slot <= maxSlots; slot++) {
+            if (isSafe(subject, slot, colors)) {
+                colors.put(subject, slot);
+
+                if (backtrack(index + 1, maxSlots, colors)) {
+                    return true;
+                }
+
+                colors.remove(subject);
+            }
+        }
+
+        return false;
+    }
+
+    private static boolean isSafe(String subject, int slot,
+                                  Map<String, Integer> colors) {
+        for (String neighbor : graph.get(subject)) {
+            if (colors.getOrDefault(neighbor, -1) == slot) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static int countSlots(Map<String, Integer> colors) {
+        int maximum = 0;
+        for (int slot : colors.values()) {
+            maximum = Math.max(maximum, slot);
+        }
+        return maximum;
+    }
+
+    private static void printTimetable(Map<String, Integer> colors) {
+        int totalSlots = countSlots(colors);
+
+        for (int slot = 1; slot <= totalSlots; slot++) {
+            System.out.print("Slot " + slot + ": ");
+            boolean first = true;
+
+            for (String subject : subjects) {
+                if (colors.getOrDefault(subject, -1) == slot) {
+                    if (!first) {
+                        System.out.print(", ");
+                    }
+                    System.out.print(subject);
+                    first = false;
+                }
+            }
+            System.out.println();
+        }
+
+        System.out.println("Slots used: " + totalSlots);
+    }
+}
